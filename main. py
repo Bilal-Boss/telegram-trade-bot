@@ -1,51 +1,61 @@
-# ✅ Telegram Trading Signal Bot with Pair + Timeframe buttons
+✅ Telegram Trading Signal Bot with Pair + Timeframes + Live Signal
 
-from flask import Flask, request
-import requests
+from flask import Flask, request import requests import yfinance as yf import ta
 
-app = Flask(__name__)
+app = Flask(name)
 
-BOT_TOKEN = "7591893945:AAGHSIOyyJjOG7jDGvmzXtWxjhHTEJMf9q8"
-CHAT_ID = "7701851695"
-TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+BOT_TOKEN = "7591893945:AAGHSIOyyJjOG7jDGvmzXtWxjhHTEJMf9q8" CHAT_ID = "7701851695" TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-pairs = ["USD/INR", "USD/MXN", "USD/TRY", "USD/IDR", "USD/PKR"]
-timeframes = ["15 seconds", "30 seconds", "1 minute", "2 minutes", "5 minutes"]
+pairs = { "USD/INR": "USDINR=X", "USD/MXN": "USDMXN=X", "USD/TRY": "USDTRY=X", "USD/IDR": "USDIDR=X", "USD/PKR": "USDPKR=X" } timeframes = ["15m", "30m", "1h"]
 
 user_state = {}
 
-@app.route("/webhook", methods=["POST"])
-def webhook():
-    data = request.json
-    chat_id = data["message"]["chat"]["id"]
-    text = data["message"].get("text", "")
+@app.route("/webhook", methods=["POST"]) def webhook(): data = request.json chat_id = data["message"]["chat"]["id"] text = data["message"].get("text", "")
 
-    if text == "/start":
-        keyboard = [[{"text": pair}] for pair in pairs]
-        send_message(chat_id, "Please select a currency pair:", keyboard)
-        user_state[chat_id] = {"step": "pair"}
+if text == "/start":
+    keyboard = [[{"text": pair}] for pair in pairs.keys()]
+    send_message(chat_id, "Please select a currency pair:", keyboard)
+    user_state[chat_id] = {"step": "pair"}
 
-    elif chat_id in user_state and user_state[chat_id]["step"] == "pair" and text in pairs:
-        user_state[chat_id]["pair"] = text
-        user_state[chat_id]["step"] = "timeframe"
-        keyboard = [[{"text": tf}] for tf in timeframes]
-        send_message(chat_id, f"Selected: {text}\nNow choose expiration time:", keyboard)
+elif chat_id in user_state and user_state[chat_id]["step"] == "pair" and text in pairs:
+    user_state[chat_id]["pair"] = text
+    user_state[chat_id]["step"] = "timeframe"
+    keyboard = [[{"text": tf}] for tf in timeframes]
+    send_message(chat_id, f"Selected: {text}\nNow choose timeframe:", keyboard)
 
-    elif chat_id in user_state and user_state[chat_id]["step"] == "timeframe" and text in timeframes:
-        pair = user_state[chat_id]["pair"]
-        timeframe = text
-        user_state[chat_id]["step"] = None  # Reset
-        send_message(chat_id, f"✅ Signal generated for {pair} with timeframe {timeframe}\n\n(Signal logic will be added in next step.)")
+elif chat_id in user_state and user_state[chat_id]["step"] == "timeframe" and text in timeframes:
+    pair_name = user_state[chat_id]["pair"]
+    timeframe = text
+    symbol = pairs[pair_name]
 
-    return {"ok": True}
+    # Get signal
+    signal = get_signal(symbol, timeframe)
+    send_message(chat_id, f"📊 Pair: {pair_name}\n🕒 Timeframe: {timeframe}\n📈 Signal: {signal}")
 
-def send_message(chat_id, text, keyboard=None):
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "reply_markup": {"keyboard": keyboard, "resize_keyboard": True} if keyboard else {}
-    }
-    requests.post(f"{TELEGRAM_API}/sendMessage", json=payload)
+    user_state[chat_id]["step"] = None
 
-if __name__ == "__main__":
-    app.run(debug=True)
+return {"ok": True}
+
+def get_signal(symbol, tf): try: interval = "15m" if tf == "15m" else "30m" if tf == "30m" else "60m" data = yf.download(tickers=symbol, period="2d", interval=interval) data = data.dropna()
+
+# Apply indicators
+    data["rsi"] = ta.momentum.RSIIndicator(close=data["Close"]).rsi()
+    data["macd"] = ta.trend.MACD(close=data["Close"]).macd_diff()
+
+    rsi = data["rsi"].iloc[-1]
+    macd = data["macd"].iloc[-1]
+
+    if rsi < 30 and macd > 0:
+        return "✅ BUY (RSI oversold, MACD bullish)"
+    elif rsi > 70 and macd < 0:
+        return "❌ SELL (RSI overbought, MACD bearish)"
+    else:
+        return "⏸️ HOLD (No clear signal)"
+
+except Exception as e:
+    return f"⚠️ Error: {str(e)}"
+
+def send_message(chat_id, text, keyboard=None): payload = { "chat_id": chat_id, "text": text, "reply_markup": {"keyboard": keyboard, "resize_keyboard": True} if keyboard else {} } requests.post(f"{TELEGRAM_API}/sendMessage", json=payload)
+
+if name == "main": app.run(debug=True)
+
