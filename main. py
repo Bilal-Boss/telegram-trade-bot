@@ -1,0 +1,51 @@
+# ✅ Telegram Trading Signal Bot with Pair + Timeframe buttons
+
+from flask import Flask, request
+import requests
+
+app = Flask(__name__)
+
+BOT_TOKEN = "7591893945:AAGHSIOyyJjOG7jDGvmzXtWxjhHTEJMf9q8"
+CHAT_ID = "7701851695"
+TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+pairs = ["USD/INR", "USD/MXN", "USD/TRY", "USD/IDR", "USD/PKR"]
+timeframes = ["15 seconds", "30 seconds", "1 minute", "2 minutes", "5 minutes"]
+
+user_state = {}
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+    chat_id = data["message"]["chat"]["id"]
+    text = data["message"].get("text", "")
+
+    if text == "/start":
+        keyboard = [[{"text": pair}] for pair in pairs]
+        send_message(chat_id, "Please select a currency pair:", keyboard)
+        user_state[chat_id] = {"step": "pair"}
+
+    elif chat_id in user_state and user_state[chat_id]["step"] == "pair" and text in pairs:
+        user_state[chat_id]["pair"] = text
+        user_state[chat_id]["step"] = "timeframe"
+        keyboard = [[{"text": tf}] for tf in timeframes]
+        send_message(chat_id, f"Selected: {text}\nNow choose expiration time:", keyboard)
+
+    elif chat_id in user_state and user_state[chat_id]["step"] == "timeframe" and text in timeframes:
+        pair = user_state[chat_id]["pair"]
+        timeframe = text
+        user_state[chat_id]["step"] = None  # Reset
+        send_message(chat_id, f"✅ Signal generated for {pair} with timeframe {timeframe}\n\n(Signal logic will be added in next step.)")
+
+    return {"ok": True}
+
+def send_message(chat_id, text, keyboard=None):
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "reply_markup": {"keyboard": keyboard, "resize_keyboard": True} if keyboard else {}
+    }
+    requests.post(f"{TELEGRAM_API}/sendMessage", json=payload)
+
+if __name__ == "__main__":
+    app.run(debug=True)
